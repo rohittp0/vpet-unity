@@ -6,13 +6,11 @@ using UnityEngine.XR.ARSubsystems;
 
 public class ClickBehaviour : MonoBehaviour
 {
-    private float speed = 2.0f;
+    private float speed = 0.5f;
     private Vector3 targetPosition;
     private Animator animator;
     private ARSessionOrigin arSessionOrigin;
     private ARRaycastManager arRaycastManager;
-    private Camera arCamera;
-    
     private bool _isMoving = false;
     
     public GameObject foodPrefab;
@@ -22,40 +20,11 @@ public class ClickBehaviour : MonoBehaviour
         animator = GetComponent<Animator>();
         arSessionOrigin = FindObjectOfType<ARSessionOrigin>();
         arRaycastManager = FindObjectOfType<ARRaycastManager>();
-        arCamera = arSessionOrigin.GetComponent<Camera>();
     }
     
     private void HandleTouch(Vector3 touchPosition)
     {
-        Debug.Log("Handling touch");
-        
-        if(arCamera == null)
-            return;
-        
-        Debug.Log("Camera found");
-        
-        Ray ray = arCamera.ScreenPointToRay(touchPosition);
-        RaycastHit hit;
-        
-        Debug.Log("Raycast using camera");
-
-        if (Physics.Raycast(ray, out hit) && hit.collider.gameObject == gameObject)
-        {
-            Debug.Log("Raycast hit dragon");
-            // Instantiate the cube at a position in front of the dragon
-            Vector3 foodPosition = transform.position + transform.forward * 2f;
-            GameObject food = Instantiate(foodPrefab, foodPosition, Quaternion.identity);
-
-            // Get the cube's rigidbody component and throw it towards the dragon
-            Rigidbody foodRigidbody = food.GetComponent<Rigidbody>();
-            foodRigidbody.AddForce(transform.forward * 500f);
-            
-            Debug.Log("Food spawned");
-            
-            return;
-        }
-        
-        Debug.Log("Raycast hit nothing, trying to find location to move");
+        Debug.Log("Trying to find location to move");
 
         // Perform a raycast from the touch position into the AR scene
         List<ARRaycastHit> hits = new List<ARRaycastHit>();
@@ -65,8 +34,11 @@ public class ClickBehaviour : MonoBehaviour
             // If the ray hits a plane, set the target position to the hit point
             Pose hitPose = hits[0].pose;
             targetPosition = arSessionOrigin.transform.InverseTransformPoint(hitPose.position);
-            animator.SetLookAtPosition(hitPose.position);
-            _isMoving = true;
+            
+            if((transform.position - targetPosition).magnitude < 0.4f)
+                this.OnMouseDown();
+            else
+                _isMoving = true;
             
             Debug.Log("Target position set");
         }
@@ -84,9 +56,9 @@ public class ClickBehaviour : MonoBehaviour
             Vector3 direction = (targetPosition - transform.position).normalized;
             
             animator.SetTrigger("Walk");
-            animator.SetLookAtPosition(direction);
+
             transform.Translate(direction * speed * Time.deltaTime, Space.Self);
-            
+
             _isMoving = true;
             
             Debug.Log("Moved");
@@ -95,6 +67,7 @@ public class ClickBehaviour : MonoBehaviour
         {
             Debug.Log("Idle");
             animator.SetTrigger("Idle"); 
+            transform.position = targetPosition;
             _isMoving = false;
         }
     }
@@ -103,7 +76,48 @@ public class ClickBehaviour : MonoBehaviour
     {
         Debug.Log("Trigger entered");
         
-        if (other.CompareTag("Food"))
-            animator.SetTrigger("Eat");
+        animator.StopPlayback();
+        animator.Play("Eat");
+        Destroy(other.gameObject);
+        
+        Debug.Log("Trigger exited");
     }
+    
+    void OnMouseDown()
+    {
+        Debug.Log("Hungary dragon clicked");
+        // Get the camera position and direction
+        Vector3 cameraPosition = arSessionOrigin.transform.position;
+        Vector3 cameraForward = arSessionOrigin.transform.forward;
+
+        // Calculate the position to throw the food from (slightly in front of the camera)
+        Vector3 throwPosition = cameraPosition + cameraForward * 0.5f;
+        
+        Debug.Log("Creating food");
+
+        // Instantiate the food at the throw position
+        GameObject food = Instantiate(foodPrefab, throwPosition, Quaternion.identity);
+
+        // Get the food's rigidbody component
+        Rigidbody foodRigidbody = food.GetComponent<Rigidbody>();
+
+        // Calculate the direction to throw the food (towards the dragon)
+        Vector3 throwDirection = (transform.position - throwPosition).normalized;
+
+        // Calculate the velocity to throw the food (based on the desired throw distance and time)
+        float throwDistance = 2.0f;
+        float throwTime = 1.0f;
+        Vector3 throwVelocity = throwDirection * (throwDistance / throwTime);
+        
+        Debug.Log("Throwing food");
+
+        // Apply the velocity to the food's rigidbody
+        foodRigidbody.velocity = throwVelocity;
+
+        // Rotate the food to face the direction it is thrown
+        food.transform.forward = throwDirection;
+        
+        Debug.Log("Food thrown");
+    }
+
 }
